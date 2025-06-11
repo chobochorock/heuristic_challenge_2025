@@ -186,6 +186,7 @@ if __name__ == '__main__':
 
                     board.simulate_action(state, result)
                     _info(f'Player {side} [{player_name[side]}] do action {result}.')
+                    board.next_turn()
                 except Empty:
                     # Timeout happened
                     winner_count.append(player_name[other_side])

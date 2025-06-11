@@ -124,6 +124,14 @@ class GameBoard:
             self._logger.debug(f'Querying whether the game ends in this state... Answer = {is_game_end}')
         return is_game_end
 
+    def next_turn(self):
+        """
+        Return the current player
+        """
+        self._current_player = 'black' if self._current_player == 'white' else 'white'
+        self._board.turn = 0 if self._current_player == 'white' else 1 
+        return 
+    
     def current_player(self):
         """
         Return the current player
