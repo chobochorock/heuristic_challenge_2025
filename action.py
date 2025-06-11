@@ -62,7 +62,9 @@ class MOVE(Action):
         # This can raise two exceptions: GameOver / InvalidMove
         # These two exceptions will be handled in the board.
         board._board.move_pawn(self.player, *self.position,
-                               check_winner=not avoid_check, check_player=not avoid_check)
+                               check_winner=not avoid_check, 
+                            #    check_player=not avoid_check
+                               )
 
 
 class BLOCK(Action):
@@ -99,6 +101,7 @@ class BLOCK(Action):
         # These two exceptions will be handled in the board.
         board._board.place_fence(*self.edge, self.orientation, check_winner=not avoid_check)
         board._fences.append((self.edge, self.orientation))
+        board._board.fences_left[self.player] -= 1
 
 
 # Export actions only

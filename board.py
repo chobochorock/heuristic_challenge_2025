@@ -67,6 +67,7 @@ class GameBoard:
         self._board = Board()
 
         # Initialize board renderer for debugging purposes
+        self._board.fences_left = {'white' : 10, 'black' : 10}
         if IS_DEBUG:  # Logging for debug
             self._logger.debug('Rendered board: \n' + self._unique_game_state_identifier())
             self._logger.debug('\n' + print_board(self._board))
@@ -175,7 +176,7 @@ class GameBoard:
             self._logger.debug('Querying applicable move directions...')
 
         # Read all applicable positions
-        player = self._board.current_player() if player is None else player
+        player = self._current_player if player is None else player
         applicable_positions = sorted([
             (square.row, square.col)
             for square in self._board.valid_pawn_moves(player, check_winner=False)
@@ -203,7 +204,7 @@ class GameBoard:
             self._logger.debug('Querying applicable move directions...')
 
         # Read all applicable positions
-        player = self._board.current_player() if player is None else player
+        player = self._current_player if player is None else player
         if self._board.fences_left[player] == 0:
             if IS_DEBUG:  # Logging for debug
                 self._logger.debug(f'{player} used all fences.')
@@ -374,7 +375,7 @@ class GameBoard:
 
         # Re-simulate fencing:
         for (r, c), o in state['board']['fence_center']:
-            current_player = self._board.current_player()
+            current_player = self._current_player
             if o == 'h':
                 act = BLOCK(player=current_player, orientation='horizontal', edge=(r, c))
             elif o == 'v':

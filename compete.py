@@ -22,7 +22,9 @@ import psutil as pu
 from agents.load import get_all_agents
 from board import GameBoard, InvalidFence, InvalidMove
 # Package for problem definitions
-from evaluator.util import MEGABYTES
+# from evaluator.util import MEGABYTES
+
+MEGABYTES = 1024 ** 2
 
 #: The number of games to run the evaluation
 GAMES = 10
