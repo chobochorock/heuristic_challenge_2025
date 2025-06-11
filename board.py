@@ -73,6 +73,7 @@ class GameBoard:
             self._logger.debug('\n' + print_board(self._board))
 
         # Store initial state representation
+        self._board.turn = 0 if self._current_player == 'white' else 1 
         self._initial = self._save_state()
         self._current = deepcopy(self._initial)
         self._fences = []
@@ -127,7 +128,7 @@ class GameBoard:
         """
         Return the current player
         """
-        return self._board.current_player()
+        return self._current_player
 
     def get_state(self) -> dict:
         """
