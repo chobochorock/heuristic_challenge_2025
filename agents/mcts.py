@@ -133,9 +133,10 @@ class Agent:  # Do not change the name of this class!
         import numpy as np
         from collections import defaultdict
         from abc import ABC, abstractmethod
+        import time
 
 
-        class MonteCarloTreeSearchNode(ABC):
+        class MCTSNode(ABC):
 
             def __init__(self, state, parent=None):
                 """
@@ -199,7 +200,7 @@ class Agent:  # Do not change the name of this class!
             def rollout_policy(self, possible_moves):        
                 return possible_moves[np.random.randint(len(possible_moves))]
 
-        class TwoPlayersGameMonteCarloTreeSearchNode(MonteCarloTreeSearchNode):
+        class TwoPlayersGameMCTSNode(MCTSNode):
 
             def __init__(self, state, parent=None):
                 super().__init__(state, parent)
@@ -226,7 +227,7 @@ class Agent:  # Do not change the name of this class!
             def expand(self):
                 action = self.untried_actions.pop()
                 next_state = self.state.move(action)
-                child_node = TwoPlayersGameMonteCarloTreeSearchNode(
+                child_node = TwoPlayersGameMCTSNode(
                     next_state, parent=self
                 )
                 self.children.append(child_node)
@@ -249,7 +250,7 @@ class Agent:  # Do not change the name of this class!
                 if self.parent:
                     self.parent.backpropagate(result)
 
-        class MonteCarloTreeSearch(object):
+        class MCTS(object):
 
             def __init__(self, node):
                 """
