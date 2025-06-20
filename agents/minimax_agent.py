@@ -131,13 +131,34 @@ class Agent:  # Do not change the name of this class!
         :param time_limit: The time limit for the search. Datetime.now() should have lower timestamp value than this.
         :return: The next move.
         """
+        # import logging
+        # from argparse import ArgumentParser
+        # argparser = ArgumentParser()
+        # argparser.set_defaults(debug=False)
+        # argparser.add_argument('-p', '-players', '--players', type=str, nargs='+',
+        #                     help='Players to compete (Program will evaluate your players as a league match)')
+        # argparser.add_argument('--debug', action='store_true', dest='debug',
+        #                     help='Enable debug mode')
+        # args = argparser.parse_args()
+        # logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO,
+        #                 format='%(asctime)s [%(name)-12s] %(levelname)-8s %(message)s',
+        #                 filename='execution.log',
+        #                 # Also, the output will be logged in 'execution.log' file.
+        #                 filemode='w+',
+        #                 force=True, encoding='UTF-8')
+        # _logger = logging.getLogger('heurisitc_agent_check')
+        # _logger.debug(f'player utility : ')
+
+
+
         # heuristic layer
-        #efficient moving    
-        def path_finding(player) : 
+        # efficient moving    
+        def path_finding(state, player) : 
+            '''A* 알고리즘으로 작성된 최적 경로를를 찾는 알고리즘이다. '''
             def heur(path : list) :
                 move = path[-1]
-                if   board.get_player_id() == 'white' : heur = 8 - move[0]
-                elif board.get_player_id() == 'black' : heur = move[0]
+                if   player == 'white' : heur = 8 - move[0]
+                elif player == 'black' : heur = move[0]
                 return heur
             
             def eval(path) : return len(path) + heur(path)
@@ -150,7 +171,7 @@ class Agent:  # Do not change the name of this class!
                 if min == None : return 0
                 return frontier.index(min)
 
-            init_state = board.get_initial_state()
+            init_state = state
             init_coordinate = tuple(init_state['player'][player]['pawn'])
             visited = {init_coordinate : 0}
             frontier = []
@@ -177,79 +198,119 @@ class Agent:  # Do not change the name of this class!
                     new_moves = current_frontier['moves'][:] + [move]
                     frontier.append({'priority' : eval(new_moves), 'moves' : new_moves})
 
-        def fence_finding(player, opponent_path=None) :
+        def fence_finding(state, player, opponent_path=None) -> List[BLOCK] :
             # heuristic : fence is good to be placed at behind of player
             # consider, when moving is good? or installing fences? if so many fences are used before we get in middle game or end game, we may suffer unilaterally from opponent's strategy
             # horizantal : Even if opponent is close or far, it is effective when it is placed
             # vertical : only efficient but powerful when the opponent is close to its placement
-            '''fences that blocks the opponents path and its position is behind of player
-            or ...'''
-            
-            fences = board.get_applicable_fences(player=player)
+            # fences that blocks the opponents path and its position is behind of player or ...
+            '''휴리스틱을 기반으로 설치할 만한 장벽을 계산한다. 예를 들어 현재 휴리스틱은 다음과 같다.
+
+            :heuristic 1: 장벽의 위치가 자신보다 뒤에이면서 상대보다 앞에 있게 하면 채택 (이렇게 하면, 상대는 반드시 해당 장벽에 영향을 받고 목표지점에 도달해야 한다)
+            :heuristic 2: 해당 장벽이 상대의 최적 경로를 막는다면 채택 (이렇게 하면, 상대는 반드시 이 장벽을 피해야 하기에 이동거리에 손해 가능성이 크다다)
+            :else: 이후에 추가하시거나 구현할 수 있다. 
+            '''
+            board.set_to_state(state)
             opponent = 'white' if player == 'black' else 'black'
-            if opponent_path is None : opponent_path = path_finding(opponent)
+            if opponent_path is None : opponent_path = path_finding(state, opponent)
             player_pos = board.get_position(self.player)
             opponent_pos = board.get_position(self.opponent)
-
-            for fence in fences :
+            blocking_fences = []
+            for fence in board.get_applicable_fences(player=player) :
                 coord, orient = fence
-                if (player == 'black' and coord[0] < opponent_pos[0]-1 and coord[0] < player_pos[0]  ) \
-                or (player == 'white' and opponent_pos[0] > coord[0]   and player_pos[0]-1 > coord[0]) : 
+                if (player == 'black' and coord[0] > opponent_pos[0]   and coord[0] > player_pos[0]-1) \
+                or (player == 'white' and opponent_pos[0]-1 > coord[0] and player_pos[0] > coord[0]) : 
                     # 장벽이 플레이어의 뒤 상대한테는 앞에 있게 두는 경우 가산점 (또는 그 경우만 고려)
                     pass
                 else : continue # 이 코드도 고려해보는 것이 좋음 (위 조건에 좋은 상황만 고려)
 
-                # 이득 계산(경로를 실행하면서, 상대의 거리증감을 계산)
+                # 이 장벽이 상대의 길을 가로막는지 확인 (상대의 최적 경로를 막을 수 있다면 좋응)
+                try : # 잘 안돌아 가는 것 같음
+                    # 장벽이 설치된 이후에 상대가 이전 최적 경로를 지날 수 있는지 확인한다. 
+                    coord, orient = fence
+                    board.simulate_action(state, *([BLOCK(player, coord, orient)] + opponent_path))
+                except : 
+                    # 지나지 못한다면(예외가 발생한다면면), 경로를 막는 장벽이므로 합격!
+                    blocking_fences.append(fence)
             
-            return fences
+            board.set_to_state(state)
+            return blocking_fences
         
         #minimax algorithm
         INF = 100000
         self.opponent = 'white' if self.player == 'black' else 'black'
-        init_player_path   = path_finding(self.player)
-        init_opponent_path = path_finding(self.opponent)
-        init_player_pos = board.get_position(self.player)
-        init_opponent_pos = board.get_position(self.opponent)
+        init_state = board.get_state()
 
-        def utility() : # 형세판단
-            if board.is_game_end() : 
-                if board.current_player == self.player : return INF
-                else :                                   return -INF
-            else : # depth limit -> heuristic required
-                player_util   = len(path_finding(self.player))
-                opponent_util = len(path_finding(self.opponent))
-                return player_util - opponent_util
+        def utility(state) : 
+            '''
+            상대의 비용과 자신의 비용을 휴리스틱을 포함하여 계산
 
-        def get_actions(player) :
+            :heuristic: 자신의 최적경로의 거리와 상대의 장벽 갯수가 자신의 비용으로 책정된다. 둘 사이에 가중치(w)는 임의로 조정해야 한다. 
+            '''
+            # depth limit -> heuristic required
+            player_fence_num   = board.number_of_fences_left(self.player)
+            opponent_fence_num = board.number_of_fences_left(self.opponent)
+            player_path_len    = len(path_finding(state, self.player))
+            opponent_path_len  = len(path_finding(state, self.opponent))
+
+            # 장벽이 줄수 있는 피해는 w 턴정도라고 예측
+            w = 1
+            player_cost   = player_path_len   + w * opponent_fence_num
+            opponent_cost = opponent_path_len + w * player_fence_num
+            return opponent_cost - player_cost
+
+        def get_actions(state, player) -> List[Action] :
+            board.set_to_state(state)
             # fences = [BLOCK(player, edge=coord, orientation=orient) 
             #           for coord, orient in board.get_applicable_fences(player=player)]
             # moves  = [MOVE(player, position) 
             #           for position in board.get_applicable_moves(player=player)]
             
             # need to add heuristic priority
-            moves  =  path_finding(player)[0]
-            fences = fence_finding(player)
+            # 각각이 휴리스틱을 적용한 장벽과 이동의 리스트이다. 
+            moves  = [path_finding(state, player)[0]]
+            fences = fence_finding(state, player)
+            # assert False, f'{moves + fences}'
+            if moves + fences is None : return choice(board.get_applicable_fences() + board.get_applicable_moves())
             return moves + fences
 
-        def MaxValue(state, depth=1) :
+        def MaxValue(state, depth=1) -> tuple[int, Action] : # player turn
             board.set_to_state(state)
-            if board.is_game_end() or depth > 6 : return utility(), None
+            if board.is_game_end() : return -INF,      None
+            if depth > 10 :          return utility(state), None
+
             v, move = (-INF, None)
-            for act in get_actions(self.player) : 
-                v2, a2 = MinValue(board.simulate_action(state, act))
+            applicable_actions = get_actions(state, self.player)
+            for act in applicable_actions :
+                v2, a2 = MinValue(board.simulate_action(state, act), depth + 1)
                 if v2 > v : v, move = v2, act
+
+            if move is None : return v, choice(get_actions(state, self.player))
             return v, move
 
-        def MinValue(state, depth=1) :
+        def MinValue(state, depth=1) -> tuple[int, Action] : # opponent turn
             board.set_to_state(state)
-            if board.is_game_end() or depth > 6 : return utility(), None
+            if board.is_game_end() : return INF,       None
+            if depth > 10 :          return utility(state), None
+
             v, move = (INF, None)
-            for act in get_actions(self.opponent) : 
-                v2, a2 = MaxValue(board.simulate_action(state, act))
+            applicable_actions = get_actions(state, self.opponent)
+            for act in applicable_actions : 
+                v2, a2 = MaxValue(board.simulate_action(state, act), depth + 1)
                 if v2 < v : v, move = v2, act
+            
+            if move is None : return v, choice(get_actions(state, self.opponent))
             return v, move
 
-        value, action = MaxValue(board.get_state())
+        result = MaxValue(board.get_state())
+        action = result[1]
+        # assert False, f'{action}'
+        try :
+            action = MOVE(action.player, action.position)
+        except :
+            action = BLOCK(action.player, action.edge, action.orientation)
+        
+        board.set_to_state(init_state)
 
         return action
 
