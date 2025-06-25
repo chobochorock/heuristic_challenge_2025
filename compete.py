@@ -21,10 +21,8 @@ import psutil as pu
 # Function for loading your agents
 from agents.load import get_all_agents
 from board import GameBoard, InvalidFence, InvalidMove
-# Package for problem definitions
-# from evaluator.util import MEGABYTES
 
-MEGABYTES = 1024 ** 2
+MEGABYTES = 1024 * 1024
 
 #: The number of games to run the evaluation
 GAMES = 10
@@ -70,6 +68,7 @@ def _query(player, player_side, query_queue: Queue, action_queue: Queue):
 def _execute(player, player_side, query_queue: Queue, action_queue: Queue):
     """
     Execute a player algorithm.
+
     :param player: Agent
     :param player_side: Side of the player (either White or Black)
     :param query_queue: Queue for querying states

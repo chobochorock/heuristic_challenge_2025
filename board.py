@@ -54,7 +54,7 @@ class GameBoard:
 
     def _initialize(self, start_with_random_fence: int = 0):
         """
-        Initialize the board for evaluation. ONLY for evaluation purposes.
+        Initialize the board for evaluation. ONLY for evaluation purposes.in max
         [WARN] Don't access this method in your agent code.
         """
         # Initialize process tracker
@@ -241,6 +241,10 @@ class GameBoard:
 
         # Return applicable positions as list of tuples.
         return applicable_fences
+    
+    def debug(self, message) : 
+        self._logger.debug(message)
+        self._logger.debug('shiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiba')
 
     def get_current_memory_usage(self):
         """
@@ -361,6 +365,10 @@ class GameBoard:
         """
         Helper function to restore board state to given state representation.
         """
+        for r,c in self._board.fence_center_grid.argwhere():
+            self._board._place_or_remove_fence(r, c, 'h', place=False)
+            self._board._place_or_remove_fence(r, c, 'v', place=False)
+            
         # Clear everything
         self._board.fence_center_grid[:, :] = False
         self._board.horizontal_fence_grid[:, :] = False
