@@ -4,7 +4,9 @@ from typing import List, Literal, Union
 
 from action import *
 from board import GameBoard
-
+from collections import defaultdict
+import numpy as np
+import time
 
 class Agent:  # Do not change the name of this class!
     """
@@ -109,206 +111,139 @@ class Agent:  # Do not change the name of this class!
 
     def adversarial_search(self, board: GameBoard, time_limit: float) -> Action:
         """
-        * Complete this function to answer the challenge PART IV.
-
-        This function uses adversarial search to win the game.
-        The system calls your algorithm whenever your turn arrives.
-        Each time, it provides new position of your pawn and asks your next decision until time limit is reached.
-
-        You can use your search function, which is previously implemented, to compute relevant information.
-
-        RESTRICTIONS: USE one of the following algorithms or its variant.
-        - Minimax algorithm, H-minimax algorithm, and Expectminimax algorithm
-        - RBFS search
-        - Alpha-beta search and heuristic version of it.
-        - Pure Monte-Carlo search
-        - Monte-Carlo Tree Search and its variants
-        - Minimax search with belief states
-        - Alpha-beta search with belief states
-
-        :param board: The game board with current state.
-        :param time_limit: The time limit for the search. Datetime.now() should have lower timestamp value than this.
-        :return: The next move.
+        주어진 게임 상태에서 Monte Carlo Tree Search(MCTS)를 사용하여 최적의 행동을 찾는 함수.
         """
-        import numpy as np
-        from collections import defaultdict
-        from abc import ABC, abstractmethod
-        import time
-
-
-        class MCTSNode(ABC):
-
+        # MCTS에서 사용되는 각 노드를 나타내는 클래스
+        class MCTSNode:
             def __init__(self, state, parent=None):
                 """
-                Parameters
-                ----------
-                state : mctspy.games.common.TwoPlayersAbstractGameState
-                parent : MonteCarloTreeSearchNode
+                노드 초기화
+                :param state: 이 노드에서의 게임 상태
+                :param parent: 부모 노드
                 """
-                self.state = state
-                self.parent = parent
-                self.children = []
-
-            @property
-            @abstractmethod
-            def untried_actions(self):
-                """
-
-                Returns
-                -------
-                list of mctspy.games.common.AbstractGameAction
-
-                """
-                pass
-
-            @property
-            @abstractmethod
-            def q(self):
-                pass
-
-            @property
-            @abstractmethod
-            def n(self):
-                pass
-
-            @abstractmethod
-            def expand(self):
-                pass
-
-            @abstractmethod
-            def is_terminal_node(self):
-                pass
-
-            @abstractmethod
-            def rollout(self):
-                pass
-
-            @abstractmethod
-            def backpropagate(self, reward):
-                pass
-
-            def is_fully_expanded(self):
-                return len(self.untried_actions) == 0
-
-            def best_child(self, c_param=1.4):
-                choices_weights = [
-                    (c.q / c.n) + c_param * np.sqrt((2 * np.log(self.n) / c.n))
-                    for c in self.children
-                ]
-                return self.children[np.argmax(choices_weights)]
-
-            def rollout_policy(self, possible_moves):        
-                return possible_moves[np.random.randint(len(possible_moves))]
-
-        class TwoPlayersGameMCTSNode(MCTSNode):
-
-            def __init__(self, state, parent=None):
-                super().__init__(state, parent)
-                self._number_of_visits = 0.
-                self._results = defaultdict(int)
-                self._untried_actions = None
+                self.state = state  # 현재 게임 상태를 저장
+                self.parent = parent  # 부모 노드에 대한 참조
+                self.children = []  # 자식 노드를 저장하는 리스트
+                self._number_of_visits = 0  # 이 노드가 방문된 횟수
+                self._results = defaultdict(int)  # 결과를 저장 (승리/패배 기록)
+                self._untried_actions = None  # 아직 시도하지 않은 행동들
 
             @property
             def untried_actions(self):
+                """
+                아직 시도하지 않은 행동을 반환.
+                처음 호출될 때, 가능한 행동 목록을 초기화.
+                """
                 if self._untried_actions is None:
                     self._untried_actions = self.state.get_legal_actions()
                 return self._untried_actions
 
             @property
             def q(self):
-                wins = self._results[self.parent.state.next_to_move]
-                loses = self._results[-1 * self.parent.state.next_to_move]
-                return wins - loses
+                """
+                이 노드에서 얻은 점수(승리 - 패배).
+                부모 노드의 플레이어를 기준으로 계산.
+                """
+                wins = self._results[self.parent.state.current_player]  # 부모 플레이어의 승리 수
+                losses = self._results[-1 * self.parent.state.current_player]  # 부모 플레이어의 패배 수
+                return wins - losses
 
             @property
             def n(self):
+                """
+                이 노드가 방문된 횟수.
+                """
                 return self._number_of_visits
 
             def expand(self):
-                action = self.untried_actions.pop()
-                next_state = self.state.move(action)
-                child_node = TwoPlayersGameMCTSNode(
-                    next_state, parent=self
-                )
-                self.children.append(child_node)
+                """
+                아직 시도하지 않은 행동을 기반으로 자식 노드를 생성.
+                새로운 상태로 이동한 자식 노드를 반환.
+                """
+                action = self.untried_actions.pop()  # 아직 시도하지 않은 행동 중 하나를 선택
+                next_state = self.state.move(action)  # 선택한 행동을 적용한 새로운 상태 생성
+                child_node = MCTSNode(next_state, parent=self)  # 새로운 자식 노드 생성
+                self.children.append(child_node)  # 자식 리스트에 추가
                 return child_node
 
             def is_terminal_node(self):
+                """
+                현재 노드가 게임 종료 상태인지 확인.
+                """
                 return self.state.is_game_over()
 
             def rollout(self):
+                """
+                현재 상태에서 무작위로 게임을 진행하여 종료 상태까지 도달.
+                결과를 반환.
+                """
                 current_rollout_state = self.state
-                while not current_rollout_state.is_game_over():
-                    possible_moves = current_rollout_state.get_legal_actions()
-                    action = self.rollout_policy(possible_moves)
-                    current_rollout_state = current_rollout_state.move(action)
-                return current_rollout_state.game_result
+                while not current_rollout_state.is_game_over():  # 게임 종료 상태가 될 때까지
+                    possible_moves = current_rollout_state.get_legal_actions()  # 가능한 행동 목록
+                    action = np.random.choice(possible_moves)  # 무작위로 행동 선택,, 고민해봐야할 문제
+                    current_rollout_state = current_rollout_state.move(action)  # 선택한 행동 적용
+                return current_rollout_state.game_result  # 게임 결과 반환 (승리/패배/무승부)
 
             def backpropagate(self, result):
-                self._number_of_visits += 1.
-                self._results[result] += 1.
+                """
+                시뮬레이션 결과를 부모 노드로 전파.
+                :param result: 시뮬레이션 결과 (승리/패배)
+                """
+                self._number_of_visits += 1  # 방문 횟수 증가
+                self._results[result] += 1  # 결과 업데이트
                 if self.parent:
-                    self.parent.backpropagate(result)
+                    self.parent.backpropagate(result)  # 부모 노드로 결과 전파
 
-        class MCTS(object):
+            def best_child(self, c_param=1.4):
+                """
+                UCB1 공식을 사용하여 가장 좋은 자식 노드를 선택.
+                :param c_param: 탐험과 이용 간의 균형을 조절하는 상수
+                """
+                choices_weights = [
+                    (c.q / c.n) + c_param * np.sqrt((2 * np.log(self.n) / c.n))
+                    for c in self.children
+                ]
+                return self.children[np.argmax(choices_weights)]  # 가장 높은 값을 가진 자식 반환
 
+        # MCTS 알고리즘 클래스
+        class MCTS:
             def __init__(self, node):
                 """
-                MonteCarloTreeSearchNode
-                Parameters
-                ----------
-                node : mctspy.tree.nodes.MonteCarloTreeSearchNode
+                MCTS 초기화
+                :param node: 루트 노드 (현재 상태에서 시작)
                 """
                 self.root = node
 
-            def best_action(self, simulations_number=None, total_simulation_seconds=None):
+            def best_action(self, total_simulation_seconds):
                 """
-
-                Parameters
-                ----------
-                simulations_number : int
-                    number of simulations performed to get the best action
-
-                total_simulation_seconds : float
-                    Amount of time the algorithm has to run. Specified in seconds
-
-                Returns
-                -------
-
+                주어진 시간 동안 시뮬레이션을 수행하여 최적의 행동을 반환.
+                :param total_simulation_seconds: 시뮬레이션에 사용할 최대 시간(초 단위)
                 """
-
-                if simulations_number is None :
-                    assert(total_simulation_seconds is not None)
-                    end_time = time.time() + total_simulation_seconds
-                    while True:
-                        v = self._tree_policy()
-                        reward = v.rollout()
-                        v.backpropagate(reward)
-                        if time.time() > end_time:
-                            break
-                else :
-                    for _ in range(0, simulations_number):            
-                        v = self._tree_policy()
-                        reward = v.rollout()
-                        v.backpropagate(reward)
-                # to select best child go for exploitation only
-                return self.root.best_child(c_param=0.)
+                end_time = time.time() + total_simulation_seconds  # 종료 시간 계산
+                while time.time() < end_time:  # 시간 내에 반복
+                    v = self._tree_policy()  # 탐색 정책에 따라 노드 선택
+                    reward = v.rollout()  # 선택한 노드에서 시뮬레이션 진행
+                    v.backpropagate(reward)  # 시뮬레이션 결과를 전파
+                return self.root.best_child(c_param=0.0)  # 최종적으로 가장 좋은 자식 선택
 
             def _tree_policy(self):
                 """
-                selects node to run rollout/playout for
-
-                Returns
-                -------
-
+                탐색할 노드를 선택.
+                :return: 선택된 노드
                 """
                 current_node = self.root
-                while not current_node.is_terminal_node():
-                    if not current_node.is_fully_expanded():
-                        return current_node.expand()
+                while not current_node.is_terminal_node():  # 터미널 노드가 아닐 때까지
+                    if not current_node.is_fully_expanded():  # 모든 행동을 시도하지 않았다면
+                        return current_node.expand()  # 노드를 확장
                     else:
-                        current_node = current_node.best_child()
+                        current_node = current_node.best_child()  # 가장 좋은 자식으로 이동
                 return current_node
-        
-        return action
+
+        # MCTS 실행
+        root_node = MCTSNode(board.get_state())  # 루트 노드 생성
+        mcts = MCTS(root_node)  # MCTS 초기화
+        best_node = mcts.best_action(time_limit - time.time())  # 최적의 행동 계산
+        return best_node.state.last_action  # 선택된 행동 반환
+
+
 
