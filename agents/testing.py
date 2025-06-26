@@ -133,16 +133,7 @@ class Agent:  # Do not change the name of this class!
         :param time_limit: The time limit for the search. Datetime.now() should have lower timestamp value than this.
         :return: The next move.
         """
-        class Node : 
-            def __init__(self, state : dict, player, parent=None, depth=0):
-                self.children = []
-                self.winning  = 0 # player가 이긴 횟수
-                self.rollout  = 0 # 시도된 횟수 
-                self.parent   = parent
-                self.state    = state
-                self.player   = player # 현 상태의 플레이어 : rollout시 사용
-                self.actions  = considerable_action(self.state, self.player)
-                self.depth    = depth # 디버깅용
+        DEBUG = False
 
         def opponent_of(player) : return 'white' if player == 'black' else 'black'
 
@@ -164,10 +155,9 @@ class Agent:  # Do not change the name of this class!
                 if min == None : return 0
                 return frontier.index(min)
 
-            init_state      = state
-            init_coordinate = tuple(init_state['player'][player]['pawn'])
-            visited         = {init_coordinate : 0}
-            frontier        = []
+            board.set_to_state(state)
+            visited  = {tuple(state['player'][player]['pawn']) : 0} # init coordinate
+            frontier = []
             for move in board.get_applicable_moves(player) :
                 frontier.append({'priority' : eval([move]), 'moves' : [move]})
                 visited[move] = len([move])
@@ -177,7 +167,7 @@ class Agent:  # Do not change the name of this class!
                 if not current_frontier['moves'] == [] :
                     try : 
                         board.simulate_action(
-                            init_state,
+                            state,
                             *[MOVE(player, move) for move in current_frontier['moves']],
                         )
                     except : continue
@@ -198,6 +188,7 @@ class Agent:  # Do not change the name of this class!
             def fence_block_path(player, path) : 
                 # 상대의 진로를 막는 장벽을 찾음
                 fences = []
+                if path is None : return fences
                 for i in range(len(path)-1) : # path가 none인 경우가 존재
                     init_pos, end_pos = path[i].position, path[i+1].position
                     if   init_pos[0] - end_pos[0] == -1 : 
@@ -249,6 +240,14 @@ class Agent:  # Do not change the name of this class!
                 else : # 마지막에 자신의 길을 트기 위한 장벽을 탐색하는 것을 고려
                     # 내 앞에 : 
                     continue
+
+            for fence in fences : 
+                try : 
+                    tmp_state = board.simulate_action(state, fence)
+                    assert path_finding(tmp_state, opponent_of(player)) is not None
+                except : 
+                    # print(f'cannot place {fence}')
+                    fences.remove(fence)
                 
             return fences
         
@@ -256,10 +255,10 @@ class Agent:  # Do not change the name of this class!
             '''선택할 만한 수를 선별함'''
             move   =  path_finding(state, player)[0]
             fences = fence_finding(state, player)
-            if fences == [] : 
-                app_fences = board.get_applicable_fences(player)
-                fences = sample(app_fences, min(4, len(app_fences)))
-                fences = [BLOCK(player, fence[0], fence[1]) for fence in fences]
+            # if fences == [] : 
+            #     app_fences = board.get_applicable_fences(player)
+            #     fences = sample(app_fences, min(4, len(app_fences)))
+            #     fences = [BLOCK(player, fence[0], fence[1]) for fence in fences]
             return [move] + fences
 
         def MCTS() :
@@ -272,15 +271,15 @@ class Agent:  # Do not change the name of this class!
                     c = 2 # param : 이상적인 수는 2
                     return node.winning / node.rollout + math.sqrt(c * math.log(node.parent.rollout) / node.rollout) # math domain error
                 
-                print('get in select process')
+                if DEBUG : print('get in select process')
                 present = tree 
                 while present.children : 
-                    # print(f'present actions : {present.actions}')
+                    if DEBUG : print(f'present actions : {present.actions}')
                     # if present.actions : break
                     selected = max(present.children, key=lambda n : UCB1(n))
                     # if UCB1(selected) < UCB1(present) : return present
                     present  = selected
-                print('selected the leaf')
+                if DEBUG : print('selected the leaf')
                 return present
 
             def Expand(selected : Node) :
@@ -292,13 +291,14 @@ class Agent:  # Do not change the name of this class!
                     opponent  = opponent_of(selected.player)
                     for action in node.actions : 
                         new_state = board.simulate_action(node.state, action) # simulate with node.state
-                        new_node  = Node(new_state, opponent, node, node.depth + 1)
+                        new_node  = Node(new_state, opponent, action, node, node.depth + 1)
                         node.children.append(new_node)
                     return choice(node.children)
                 
-                print('get in expand process')
-                if selected.actions : return create_from(selected)
-                else                : return selected
+                if DEBUG : print('get in expand process')
+                selected.actions  = considerable_action(selected.state, selected.player)
+                
+                return create_from(selected)
 
             def RolOut(expanded : Node) :
                 '''
@@ -313,18 +313,20 @@ class Agent:  # Do not change the name of this class!
                     opponent_num_fence = board.number_of_fences_left(opponent_of(player))
                     w = 2 # 장벽이 거리에 영향을 끼치는 것에 대한 가중치
                     weight = opponent_distance - player_distance + w * (player_num_fence - opponent_num_fence)
-                    print(f'rollout utility : {1 / (1 + 1 / math.exp(weight))}')
+                    if DEBUG : print(f'rollout utility for {player} : {1 / (1 + 1 / math.exp(weight))}')
                     return 1 / (1 + 1 / math.exp(weight)) # player 기준 승률 평가
 
-                print('get in rollout')
+                if DEBUG : print('get in rollout')
                 state = expanded.state
                 board.set_to_state(state)
                 depth_limit = 10
                 turn_player = expanded.player
+                timer = time()
                 for i in range(depth_limit) : 
+                    if time() - init_time > 55 : break
                     if board.is_game_end() : return 0 if expanded.player == turn_player else 1 # expanded.player를 사용하는 것을 고려
                     action      = choice(considerable_action(state, turn_player))
-                    # print(f'turn player actions : {considerable_action(state, turn_player)}')
+                    if DEBUG : print(f'turn player actions : {considerable_action(state, turn_player)}')
                     state       = board.simulate_action(state, action)
                     turn_player = opponent_of(turn_player)
 
@@ -336,10 +338,10 @@ class Agent:  # Do not change the name of this class!
                 '''
                 present = expanded
                 while present.parent is not None : 
-                    print(f'backpropagate depth {present.depth} : {present.winning} / {present.rollout}')
                     present.rollout += 1
                     if present.player == expanded.player : present.winning += result
                     else                                 : present.winning += 1 - result
+                    if DEBUG : print(f'backpropagate depth {present.depth} for {present.player} : {present.winning} / {present.rollout}')
                     present = present.parent
 
             init_time = time()
@@ -350,7 +352,7 @@ class Agent:  # Do not change the name of this class!
                 result   = RolOut(expanded)
                 BackPropagate(result, expanded)
             
-            return max(treeroot.children, key=lambda x : x.winning / x.rollout if x.rollout != 0 else -1) # children중에서 최고를 찾아야 함 max(treeroot.children, key=lambda x : x.winning / x.rollout)
+            return max(treeroot.children, key=lambda x : x.winning / x.rollout if x.rollout != 0 else -1).action # children중에서 최고를 찾아야 함 max(treeroot.children, key=lambda x : x.winning / x.rollout)
 
 
         # action = path_finding(board.get_state(), self.player)[0]
@@ -358,3 +360,14 @@ class Agent:  # Do not change the name of this class!
 
         return action
 
+class Node : 
+    def __init__(self, state : dict, player, action=None, parent=None, depth=0):
+        self.children = []
+        self.actions  = []
+        self.winning  = 0 # player가 이긴 횟수
+        self.rollout  = 0 # 시도된 횟수 
+        self.state    = state
+        self.player   = player # 현 상태의 플레이어 : rollout시 사용
+        self.action   = action
+        self.parent   = parent
+        self.depth    = depth # 디버깅용
